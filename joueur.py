@@ -22,17 +22,38 @@ class Joueur:
             self.vitesse_y = self.force_saut
             self.au_sol = False
 
-    def update(self):
+
+    def update(self, plateformes):  # On ajoute l'argument plateformes
         # Appliquer la gravité
         self.vitesse_y += self.gravite
         self.rect.y += self.vitesse_y
 
-        # Collision avec le sol (empêche de tomber à l'infini)
-        if self.rect.y >= self.y_sol - self.hauteur:
-            self.rect.y = self.y_sol - self.hauteur
-            self.vitesse_y = 0
-            self.au_sol = True
+        # On part du principe qu'on est en l'air, sauf si collision trouvée
+        c_est_le_sol = False
 
-    def draw(self, surface):
-        # Dessine le joueur sur la fenêtre passée en argument
-        pygame.draw.rect(surface, self.couleur, self.rect)
+        # 1. Collision avec le sol de base
+        if self.rect.bottom >= self.y_sol:
+            self.rect.bottom = self.y_sol
+            self.vitesse_y = 0
+            c_est_le_sol = True
+
+        # 2. Collision avec les plateformes (seulement si on tombe)
+        if self.vitesse_y > 0:  # On ne check la collision que si on descend
+            for p in plateformes:
+                if self.rect.colliderect(p.rect):
+                    # On vérifie si les pieds du joueur sont au-dessus du haut de la plateforme
+                    # (avec une marge de tolérance de la vitesse_y)
+                    if self.rect.bottom <= p.rect.top + self.vitesse_y + 1:
+                        self.rect.bottom = p.rect.top
+                        self.vitesse_y = 0
+                        c_est_le_sol = True
+
+        self.au_sol = c_est_le_sol
+
+    def draw(self, surface, camera_x):
+        # On crée une copie du rectangle pour le décalage d'affichage
+        rect_affichage = self.rect.copy()
+        # On soustrait la position de la caméra pour le rendu à l'écran
+        rect_affichage.x -= camera_x
+        # Dessine le joueur avec sa position relative à la caméra
+        pygame.draw.rect(surface, self.couleur, rect_affichage)

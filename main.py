@@ -2,6 +2,7 @@ import pygame
 import background
 from joueur import Joueur
 from Animaux.Marcassin import Marcassin
+from Decors.niveau_procedural import NiveauProcedural
 
 
 def main():
@@ -14,10 +15,10 @@ def main():
 
     clock = pygame.time.Clock()
 
+    # Initialisation
     bg = background.Background(SCREEN_WIDTH, SCREEN_HEIGHT, 10000)
+    niveau = NiveauProcedural(SCREEN_WIDTH, bg.ground_top)
     player = Joueur(200, bg.ground_top)
-
-    # On place le marcassin à 800px du début
     petit_marcassin = Marcassin(800, bg.ground_top)
 
     camera_x = 0
@@ -30,6 +31,7 @@ def main():
     while running:
         touche_caresse = False
 
+        # 1. GESTION DES EVENEMENTS
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -39,10 +41,10 @@ def main():
                 if event.key == pygame.K_e:
                     touche_caresse = True
 
+        # 2. MOUVEMENTS HORIZONTAUX
         keys = pygame.key.get_pressed()
         joueur_en_mouvement = False
 
-        # Mouvements Joueur
         if keys[pygame.K_RIGHT]:
             player.rect.x += vitesse_joueur
             joueur_en_mouvement = True
@@ -51,11 +53,17 @@ def main():
             joueur_en_mouvement = True
             if player.rect.x < 0: player.rect.x = 0
 
-        # Updates
-        player.update()
+        # 3. UPDATES (Logique du jeu)
+        # On update le niveau pour générer les nouvelles plateformes
+        niveau.update(camera_x)
+
+        # On update le joueur en lui passant les plateformes pour les collisions
+        player.update(niveau.plateformes)
+
+        # On update le reste
         petit_marcassin.update(player.rect.x, joueur_en_mouvement, touche_caresse, keys)
 
-        # Calcul Caméra
+        # 4. CALCUL CAMERA
         player_screen_x = player.rect.x - camera_x
         if player_screen_x > SCREEN_WIDTH - MARGE_CAMERA:
             ratio = min(1.0, (player_screen_x - (SCREEN_WIDTH - MARGE_CAMERA)) / MARGE_CAMERA)
@@ -65,14 +73,11 @@ def main():
             camera_x -= vitesse_max_camera * (ratio ** PUISSANCE_COURBE)
             if camera_x < 0: camera_x = 0
 
-        # Affichage
-        bg.draw(screen, camera_x)
-        petit_marcassin.draw(screen, camera_x)
-
-        # Dessin Joueur (avec caméra)
-        rect_player_cam = player.rect.copy()
-        rect_player_cam.x -= camera_x
-        pygame.draw.rect(screen, player.couleur, rect_player_cam)
+        # 5. AFFICHAGE
+        bg.draw(screen, camera_x)  # Fond
+        niveau.draw(screen, camera_x)  # Plateformes
+        petit_marcassin.draw(screen, camera_x)  # Marcassin
+        player.draw(screen, camera_x)  # Joueur (utilise la méthode draw interne)
 
         pygame.display.flip()
         clock.tick(60)
