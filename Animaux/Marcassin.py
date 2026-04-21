@@ -1,115 +1,112 @@
 import pygame
 import random
+import os
 
 
 class Marcassin:
     def __init__(self, x, y_sol):
-        self.largeur = 35
-        self.hauteur = 25
-        self.couleur = (139, 69, 19)
-        self.rect = pygame.Rect(x, y_sol - self.hauteur, self.largeur, self.hauteur)
+        self.chemin = os.path.join("images", "marcassin")
+
+        self.images = {
+            "WANDER": self.charger_images("peur1.png", "peur2.png"),
+            "APPROACH": self.charger_images("peur1.png", "peur2.png"),
+            "FLEE": self.charger_images("colere1.png", "colere2.png"),
+            "FOLLOW": self.charger_images("coeur1.png", "coeur2.png"),
+            "RETURN_TO_MOTHER": self.charger_images("coeur1.png", "coeur2.png")
+        }
+
+        self.image_actuelle = self.images["WANDER"][0]
+        self.rect = self.image_actuelle.get_rect()
+        self.rect.x = x
+        self.rect.bottom = y_sol
+
+        self.index_anim = 0
+        self.vitesse_anim = 0.12
 
         self.start_x = x
         self.y_sol = y_sol
-        self.vitesse_marche = 1.5
-        self.vitesse_fuite = 4
-        self.cote_suivi = -1
+        self.vitesse_marche = 2
+        self.vitesse_fuite = 5
+        self.direction_wander = 0
+        self.timer_ia = 0
 
-        # Paramètres de quête
-        self.distance_fuite_max = 700
         self.zone_detection = 350
-        self.zone_caresse = 60
-        self.distance_stop_approche = 50
+        self.zone_caresse = 70
+        self.timer_hesitation = 0
 
-        # États et Timers
         self.etat = "WANDER"
-        self.timer_IA = 0
-        self.direction_x = 0
-
-        # NOUVEAU : Timer pour éviter les changements d'état trop brusques
-        self.timer_recuperation = 0
-
+        self.cote_suivi = 1
+        self.flip = False
         self.afficher_bulle = False
-        self.font = pygame.font.SysFont(None, 26)
+        self.moving = False  # Nouveau : pour savoir si on anime ou pas
+        self.font = pygame.font.SysFont("Arial", 22, bold=True)
+        self.loin = False
 
-    def update(self, joueur_x, joueur_en_mouvement, touche_caresse, keys):
-        if self.etat == "LOST":
-            return
+    def charger_images(self, nom1, nom2):
+        img1 = pygame.image.load(os.path.join(self.chemin, nom1)).convert_alpha()
+        img2 = pygame.image.load(os.path.join(self.chemin, nom2)).convert_alpha()
+        return [pygame.transform.scale(img1, (65, 45)), pygame.transform.scale(img2, (65, 45))]
 
-        dist_joueur = abs(self.rect.x - joueur_x)
-        dist_depart = abs(self.rect.x - self.start_x)
+    def update(self, joueur_x, joueur_en_mouvement, touche_caresse, keys, mere_rect):
+        dist_joueur = abs(self.rect.centerx - joueur_x)
         self.afficher_bulle = False
+        self.moving = False  # Par défaut, immobile
 
-        # On décrémente le timer de récupération (environ 60 ticks = 1 seconde)
-        if self.timer_recuperation > 0:
-            self.timer_recuperation -= 1
+        if self.timer_hesitation > 0:
+            self.timer_hesitation -= 1
 
-        # --- MACHINE À ÉTATS ---
-        if self.etat != "FOLLOW":
-            # 1. Échec de la quête
-            if dist_depart > self.distance_fuite_max:
-                self.etat = "LOST"
+        # --- 1. LOGIQUE DES ÉTATS ---
+        if self.etat == "RETURN_TO_MOTHER":
+            pass
+        elif abs(self.start_x - self.rect.x) > 2000 and (self.etat != "FOLLOW" and self.etat != "RETURN_TO_MOTHER"):
+            self.loin = True
+        elif self.etat == "FOLLOW":
+            if abs(self.rect.centerx - mere_rect.centerx) < 450:
+                self.etat = "RETURN_TO_MOTHER"
+        else:
+            # Détection du danger
+            if dist_joueur < self.zone_detection and joueur_en_mouvement:
+                self.etat = "FLEE"
+                self.timer_hesitation = 80  # Temps d'hésitation (un peu plus d'une seconde)
 
-            # 2. Fuite (prioritaire si le joueur bouge et est proche)
-            elif dist_joueur < self.zone_detection and joueur_en_mouvement:
-                if self.etat != "FLEE":
-                    self.etat = "FLEE"
-                    # On réinitialise le temps de récupération à chaque fois qu'il fuit
-                    self.timer_recuperation = 100  # ~1.5 seconde de "choc"
-
-            # 3. Caresse (si proche et joueur immobile)
-            elif dist_joueur <= self.zone_caresse and not joueur_en_mouvement:
-                self.afficher_bulle = True
-                if touche_caresse:
-                    self.etat = "FOLLOW"
-
-            # 4. Approche (Uniquement si le temps de récupération est fini)
-            elif dist_joueur < self.zone_detection and not joueur_en_mouvement and self.timer_recuperation <= 0:
-                self.etat = "APPROACH"
-
-            # 5. Par défaut : Flânerie
-            else:
-                # Si on n'est pas en train de fuir, on flâne
-                if self.etat != "FLEE":
+            # Retour au calme uniquement si le timer est fini
+            elif self.timer_hesitation <= 0:
+                if dist_joueur <= self.zone_caresse and not joueur_en_mouvement:
+                    self.afficher_bulle = True
+                    if touche_caresse: self.etat = "FOLLOW"
+                elif dist_joueur < self.zone_detection and not joueur_en_mouvement:
+                    self.etat = "APPROACH"
+                else:
                     self.etat = "WANDER"
 
-                # Si on était en train de fuir mais que le joueur s'est arrêté/éloigné,
-                # on repasse en WANDER pour un moment de calme
-                if self.etat == "FLEE" and (not joueur_en_mouvement or dist_joueur > self.zone_detection):
-                    self.etat = "WANDER"
-
-        # --- ACTIONS ---
+        # --- 2. MOUVEMENTS ET FLIP ---
         if self.etat == "WANDER":
-            self.timer_IA -= 1
-            if self.timer_IA <= 0:
-                self.timer_IA = random.randint(40, 100)
-                if self.rect.x < self.start_x - 100:
-                    self.direction_x = random.choices([-1, 0, 1], [1, 2, 7])[0]
-                elif self.rect.x > self.start_x + 100:
-                    self.direction_x = random.choices([-1, 0, 1], [7, 2, 1])[0]
-                else:
-                    self.direction_x = random.choice([-1, 0, 1])
-            self.rect.x += self.direction_x * self.vitesse_marche
+            self.timer_ia -= 1
+            if self.timer_ia <= 0:
+                self.timer_ia = random.randint(60, 180)
+                self.direction_wander = random.choice([-1, 0, 1])
 
-        elif self.etat == "APPROACH":
-            if dist_joueur > self.distance_stop_approche:
-                if self.rect.x < joueur_x:
-                    self.rect.x += self.vitesse_marche
-                else:
-                    self.rect.x -= self.vitesse_marche
+            if self.direction_wander != 0:
+                self.rect.x += self.direction_wander * self.vitesse_marche
+                self.flip = (self.direction_wander < 0)
+                self.moving = True
+
+            # Limites
+            if self.rect.x < self.start_x - 200: self.direction_wander = 1
+            if self.rect.x > self.start_x + 200: self.direction_wander = -1
 
         elif self.etat == "FLEE":
-            # Si le marcassin est hors écran, il court moins vite pour laisser une chance au joueur
-            vitesse_actuelle = self.vitesse_fuite
-            x_sur_ecran = self.rect.x - (joueur_x - 400)  # Approximation de la caméra
+            direction = 1 if self.rect.centerx > joueur_x else -1
+            self.rect.x += direction * self.vitesse_fuite
+            self.flip = (direction < 0)
+            self.moving = True
 
-            if x_sur_ecran < 0 or x_sur_ecran > 1200:
-                vitesse_actuelle = self.vitesse_marche  # Il ralentit car il ne voit plus le danger
-
-            if self.rect.x < joueur_x:
-                self.rect.x -= vitesse_actuelle - 1
-            else:
-                self.rect.x += vitesse_actuelle + 1
+        elif self.etat == "APPROACH":
+            direction = 1 if self.rect.centerx < joueur_x else -1
+            if dist_joueur > 60:
+                self.rect.x += direction * self.vitesse_marche
+                self.moving = True
+            self.flip = (direction < 0)
 
         elif self.etat == "FOLLOW":
             if keys[pygame.K_RIGHT]:
@@ -117,19 +114,40 @@ class Marcassin:
             elif keys[pygame.K_LEFT]:
                 self.cote_suivi = 1
 
-            cible_x = joueur_x + (self.cote_suivi * 70)
-            if abs(self.rect.x - cible_x) > 5:
-                direction = 1 if self.rect.x < cible_x else -1
+            cible_x = joueur_x + (self.cote_suivi * 85)
+            if abs(self.rect.centerx - cible_x) > 15:
+                direction = 1 if self.rect.centerx < cible_x else -1
                 self.rect.x += direction * self.vitesse_fuite
+                self.flip = (direction < 0)
+                self.moving = True
+
+        elif self.etat == "RETURN_TO_MOTHER":
+            direction = 1 if self.rect.centerx < mere_rect.centerx else -1
+            if abs(self.rect.centerx - mere_rect.centerx) > 25:
+                self.rect.x += direction * self.vitesse_fuite
+                self.flip = (direction < 0)
+                self.moving = True
+            else:
+                self.rect.midbottom = (mere_rect.centerx, mere_rect.bottom)
+
+        # --- 3. ANIMATION ---
+        if self.moving:
+            self.index_anim += self.vitesse_anim
+            if self.index_anim >= 2: self.index_anim = 0
+        else:
+            self.index_anim = 0  # Image 1 fixe quand immobile
+
+        paire = self.images.get(self.etat, self.images["WANDER"])
+        self.image_actuelle = paire[int(self.index_anim)]
+
+        if self.flip:
+            self.image_actuelle = pygame.transform.flip(self.image_actuelle, True, False)
 
     def draw(self, surface, camera_x):
-        if self.etat == "LOST":
-            return
-        pos_ecran = self.rect.copy()
-        pos_ecran.x -= camera_x
-        pygame.draw.rect(surface, self.couleur, pos_ecran, border_radius=3)
+        pos_x = self.rect.x - camera_x
+        if not self.loin:
+            surface.blit(self.image_actuelle, (pos_x, self.rect.y))
+
         if self.afficher_bulle:
-            bulle_rect = pygame.Rect(pos_ecran.centerx - 15, pos_ecran.y - 35, 30, 25)
-            pygame.draw.rect(surface, (255, 255, 255), bulle_rect, border_radius=5)
-            txt = self.font.render("E", True, (0, 0, 0))
-            surface.blit(txt, (bulle_rect.x + 8, bulle_rect.y + 3))
+            pygame.draw.rect(surface, (255, 255, 255), (pos_x + 20, self.rect.y - 30, 25, 25), border_radius=5)
+            surface.blit(self.font.render("E", True, (0, 0, 0)), (pos_x + 26, self.rect.y - 30))
