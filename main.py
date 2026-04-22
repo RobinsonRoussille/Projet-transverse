@@ -24,7 +24,6 @@ def main():
     canal_aventure = son_aventure.play(-1)
     canal_usine = son_usine.play(-1)
 
-    # Volumes initiaux (on commence à l'usine)
     canal_calme.set_volume(0.0)
     canal_aventure.set_volume(0.0)
     canal_usine.set_volume(0.4)
@@ -36,31 +35,38 @@ def main():
     pygame.display.set_caption("Héritage")
     clock = pygame.time.Clock()
 
+    # --- CHARGEMENT MENU ---
+    image_menu = pygame.image.load("images/menu.png").convert()
+    image_menu = pygame.transform.scale(image_menu, (SCREEN_WIDTH, SCREEN_HEIGHT))
+
+    # Définition des boutons invisibles (à ajuster selon ton image)
+    btn_play_rect = pygame.Rect(450, 350, 300, 80)
+    btn_exit_rect = pygame.Rect(450, 470, 300, 80)
+
     # --- INITIALISATION MONDE ---
-    WORLD_SIZE = 20000  # Remis à 20000 pour une vraie aventure
+    WORLD_SIZE = 30000
     bg = background.Background(SCREEN_WIDTH, SCREEN_HEIGHT, WORLD_SIZE)
 
-    # Objets et Joueur
     player = Joueur(350, bg.ground_top)
     papa = Pere(200, bg.ground_top)
     usine_depart = Usine(bg.ground_top)
-    # On positionne l'usine de fin tout au bout
     usine_fin = Usine(bg.ground_top, WORLD_SIZE)
-    # Animaux
-    mouette = Mouette(4500, bg.ground_top)
-    petit_marcassin = Marcassin(3000, bg.ground_top)
-    maman_sanglier = MereSanglier(6000, bg.ground_top)
 
-    # Zones et obstacles
-    eau_debut, eau_fin = 8000, 10000
-    boue_debut, boue_fin = 12000, 15000
-    castor = Castor(7500, bg.ground_top)
-    baril = Dechet(7545, bg.ground_top)
+    mouette = Mouette(6000, bg.ground_top)
+    petit_marcassin = Marcassin(3000, bg.ground_top)
+    maman_sanglier = MereSanglier(8000, bg.ground_top)
+
+    eau_debut, eau_fin = 12000, 14000
+    boue_debut, boue_fin = 18000, 22000
+    castor = Castor(11500, bg.ground_top)
+    baril = Dechet(11545, bg.ground_top)
     generateur_boue = NiveauBoue(boue_debut, boue_fin, bg.ground_top)
 
     camera_x = 0
     camera_smoothing = 0.04
-    etat_jeu = "DIALOGUE"
+
+    # ÉTAT INITIAL DU JEU
+    etat_jeu = "MENU"
     cinematique_finale = False
 
     running = True
@@ -69,6 +75,14 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+
+            # Gestion des clics sur le menu
+            if event.type == pygame.MOUSEBUTTONDOWN and etat_jeu == "MENU":
+                if btn_play_rect.collidepoint(event.pos):
+                    etat_jeu = "DIALOGUE"
+                if btn_exit_rect.collidepoint(event.pos):
+                    running = False
+
             if event.type == pygame.KEYDOWN:
                 if etat_jeu == "JEU":
                     if event.key == pygame.K_e: touche_caresse = True
@@ -80,148 +94,142 @@ def main():
                         else:
                             player.sauter()
 
-        keys = pygame.key.get_pressed()
+        if etat_jeu == "MENU":
+            # Affichage du menu uniquement
+            screen.blit(image_menu, (0, 0))
+            # Décommenter ci-dessous pour aider à placer les boutons :
 
-        # --- LOGIQUE UPDATE ---
-        en_mouvement = False
-        veut_courir = False
-
-        if etat_jeu == "DIALOGUE":
-            papa.update()
-            if papa.fini:
-                etat_jeu = "JEU"
         else:
-            # Mouvements actifs
-            veut_courir = keys[pygame.K_LSHIFT]
-            if keys[pygame.K_RIGHT]:
-                if player.liane_actuelle:
-                    player.liane_actuelle.w1 += 0.001
-                else:
-                    player.rect.x += player.vitesse_actuelle
-                en_mouvement = True
-            elif keys[pygame.K_LEFT]:
-                if player.liane_actuelle:
-                    player.liane_actuelle.w1 -= 0.001
-                else:
-                    player.rect.x -= player.vitesse_actuelle
-                en_mouvement = True
+            # --- LOGIQUE DU JEU (Update) ---
+            keys = pygame.key.get_pressed()
+            en_mouvement = False
+            veut_courir = False
 
-        # --- GESTION DE LA FIN (Père réapparaît) ---
-        dist_usine_fin = usine_fin.rect.left - player.rect.right
-
-        if dist_usine_fin < 1000 and not cinematique_finale:
-            # On téléporte le père à l'usine de fin
-            papa.activer_mode_final(usine_fin.rect.left - 150)
-            cinematique_finale = True
-
-        if cinematique_finale:
-            dist_pere = papa.rect.centerx - player.rect.centerx
-            # Si on est assez proche (200px), le père parle
-            if dist_pere < 200:
+            if etat_jeu == "DIALOGUE":
                 papa.update()
+                if papa.fini:
+                    etat_jeu = "JEU"
+            else:
+                veut_courir = keys[pygame.K_LSHIFT]
+                if keys[pygame.K_RIGHT]:
+                    if player.liane_actuelle:
+                        player.liane_actuelle.w1 += 0.001
+                    else:
+                        player.rect.x += player.vitesse_actuelle
+                    en_mouvement = True
+                elif keys[pygame.K_LEFT]:
+                    if player.liane_actuelle:
+                        player.liane_actuelle.w1 -= 0.001
+                    else:
+                        player.rect.x -= player.vitesse_actuelle
+                    en_mouvement = True
 
-            # Choix final : Touche O pour finir
-            if papa.mode_final and papa.index_replique == len(papa.repliques_fin) - 1:
-                if keys[pygame.K_o, pygame.K_n]:
-                    running = False
+            # Fin de jeu
+            dist_usine_fin = usine_fin.rect.left - player.rect.right
+            if dist_usine_fin < 1000 and not cinematique_finale:
+                papa.activer_mode_final(usine_fin.rect.left - 150)
+                cinematique_finale = True
 
-        # Collisions Usines
-        if player.rect.left < usine_depart.rect.right:
-            player.rect.left = usine_depart.rect.right
-        if player.rect.right > usine_fin.rect.left:
-            player.rect.right = usine_fin.rect.left
+            if cinematique_finale:
+                dist_pere = papa.rect.centerx - player.rect.centerx
+                if dist_pere < 200:
+                    papa.update()
+                if papa.mode_final and papa.index_replique == len(papa.repliques_fin) - 1:
+                    if keys[pygame.K_o] or keys[pygame.K_n]:
+                        running = False
 
-        # --- ENVIRONNEMENT & COLLISIONS ---
-        dans_zone_x_eau = (player.rect.x >= eau_debut) and (player.rect.x <= eau_fin)
-        dans_boue = (player.rect.x >= boue_debut) and (player.rect.x <= boue_fin)
-        sur_objet_sec = False
+            # Collisions et Environnement
+            if player.rect.left < usine_depart.rect.right:
+                player.rect.left = usine_depart.rect.right
+            if player.rect.right > usine_fin.rect.left:
+                player.rect.right = usine_fin.rect.left
 
-        # Plateformes castor & boue
-        for planche in castor.plateformes:
-            if player.rect.right > planche.left and player.rect.left < planche.right:
-                if player.rect.bottom <= planche.top + 20:
-                    if player.vitesse_y >= 0 and player.rect.colliderect(planche):
-                        player.rect.bottom = planche.top
-                        player.vitesse_y = 0
-                        player.au_sol = True
-                        sur_objet_sec = True
+            dans_zone_x_eau = (player.rect.x >= eau_debut) and (player.rect.x <= eau_fin)
+            dans_boue = (player.rect.x >= boue_debut) and (player.rect.x <= boue_fin)
+            sur_objet_sec = False
 
-        generateur_boue.update()
-        for element in generateur_boue.elements:
-            if isinstance(element, Plateforme):
-                if player.rect.right > element.rect.left and player.rect.left < element.rect.right:
-                    if player.rect.bottom <= element.rect.top + 20:
-                        if player.vitesse_y >= 0 and player.rect.colliderect(element.rect):
-                            player.rect.bottom = element.rect.top
+            for planche in castor.plateformes:
+                if player.rect.right > planche.left and player.rect.left < planche.right:
+                    if player.rect.bottom <= planche.top + 20:
+                        if player.vitesse_y >= 0 and player.rect.colliderect(planche):
+                            player.rect.bottom = planche.top
                             player.vitesse_y = 0
                             player.au_sol = True
                             sur_objet_sec = True
-            elif isinstance(element, Liane):
-                if player.rect.colliderect(element.rect) and not player.au_sol and player.vitesse_y > 0:
-                    if player.liane_actuelle is None: player.liane_actuelle = element
 
-        # --- MUSIQUE DYNAMIQUE ---
-        if player.rect.x >= boue_debut - 150 and zone_actuelle != "aventure":
-            canal_calme.set_volume(0.0);
-            canal_aventure.set_volume(0.4);
-            canal_usine.set_volume(0.0)
-            zone_actuelle = "aventure"
-        elif (player.rect.x < boue_debut - 150 and player.rect.x > 950) and zone_actuelle != "calme":
-            canal_calme.set_volume(0.4);
-            canal_aventure.set_volume(0.0);
-            canal_usine.set_volume(0.0)
-            zone_actuelle = "calme"
-        elif (player.rect.x <= 950 or player.rect.x >= WORLD_SIZE - 1000) and zone_actuelle != "usine":
-            canal_calme.set_volume(0.0);
-            canal_aventure.set_volume(0.0);
-            canal_usine.set_volume(0.4)
-            zone_actuelle = "usine"
+            generateur_boue.update()
+            for element in generateur_boue.elements:
+                if isinstance(element, Plateforme):
+                    if player.rect.right > element.rect.left and player.rect.left < element.rect.right:
+                        if player.rect.bottom <= element.rect.top + 20:
+                            if player.vitesse_y >= 0 and player.rect.colliderect(element.rect):
+                                player.rect.bottom = element.rect.top
+                                player.vitesse_y = 0
+                                player.au_sol = True
+                                sur_objet_sec = True
+                elif isinstance(element, Liane):
+                    if player.rect.colliderect(element.rect) and not player.au_sol and player.vitesse_y > 0:
+                        if player.liane_actuelle is None: player.liane_actuelle = element
 
-        # Update Joueur / Boue / Baril
-        if dans_boue and not sur_objet_sec and not player.liane_actuelle:
-            player.s_enfoncer()
-            if player.rect.top > 500: player.reset_position(boue_debut - 100)
-        else:
-            if not player.liane_actuelle:
-                player.dans_la_boue = False
-                player.dansEau(dans_zone_x_eau, sur_objet_sec)
+            # Musique Dynamique
+            if (player.rect.x >= boue_debut - 250 and player.rect.x < boue_fin + 250) and zone_actuelle != "aventure":
+                canal_calme.set_volume(0.0);
+                canal_aventure.set_volume(0.4);
+                canal_usine.set_volume(0.0)
+                zone_actuelle = "aventure"
+            elif (((
+                           player.rect.x < boue_debut - 250 or player.rect.x >= boue_fin + 250) and player.rect.x > 950) and player.rect.x <= WORLD_SIZE - 1000) and zone_actuelle != "calme":
+                canal_calme.set_volume(0.4);
+                canal_aventure.set_volume(0.0);
+                canal_usine.set_volume(0.0)
+                zone_actuelle = "calme"
+            elif (player.rect.x <= 950 or player.rect.x >= WORLD_SIZE - 1000) and zone_actuelle != "usine":
+                canal_calme.set_volume(0.0);
+                canal_aventure.set_volume(0.0);
+                canal_usine.set_volume(0.4)
+                zone_actuelle = "usine"
 
-        baril_au_fond = baril.rect.x > eau_debut
-        est_en_train_de_pousser = False
-        if not baril_au_fond:
-            est_en_train_de_pousser = baril.update(player, eau_debut, eau_fin)
-        else:
-            baril.vitesse_y += 0.5;
-            baril.rect.y += baril.vitesse_y
-            if baril.rect.bottom > 470: baril.rect.bottom = 470; baril.vitesse_y = 0
+            # Updates objets
+            if dans_boue and not sur_objet_sec and not player.liane_actuelle:
+                player.s_enfoncer()
+                if player.rect.top > 500: player.reset_position(boue_debut - 100)
+            else:
+                if not player.liane_actuelle:
+                    player.dans_la_boue = False
+                    player.dansEau(dans_zone_x_eau, sur_objet_sec)
 
-        player.update(veut_courir, est_en_train_de_pousser)
-        castor.update(baril, eau_debut, eau_fin, player.largeur)
-        petit_marcassin.update(player.rect.x, en_mouvement, touche_caresse, keys, maman_sanglier.rect)
-        mouette.update(player.rect.x, (en_mouvement and veut_courir), touche_caresse)
+            baril_au_fond = baril.rect.x > eau_debut
+            est_en_train_de_pousser = False
+            if not baril_au_fond:
+                est_en_train_de_pousser = baril.update(player, eau_debut, eau_fin)
+            else:
+                baril.vitesse_y += 0.5;
+                baril.rect.y += baril.vitesse_y
+                if baril.rect.bottom > 470: baril.rect.bottom = 470; baril.vitesse_y = 0
 
-        # Caméra
-        target_camera_x = player.rect.centerx - SCREEN_WIDTH // 2
-        camera_x += (target_camera_x - camera_x) * camera_smoothing
-        camera_x = max(0, min(camera_x, WORLD_SIZE - SCREEN_WIDTH))
+            player.update(veut_courir, est_en_train_de_pousser)
+            castor.update(baril, eau_debut, eau_fin, player.largeur)
+            petit_marcassin.update(player.rect.x, en_mouvement, touche_caresse, keys, maman_sanglier.rect)
+            mouette.update(player.rect.x, (en_mouvement and veut_courir), touche_caresse)
 
-        # --- RENDU ---
-        bg.draw(screen, camera_x)
-        usine_depart.draw(screen, camera_x)
-        usine_fin.draw(screen, camera_x)
+            target_camera_x = player.rect.centerx - SCREEN_WIDTH // 2
+            camera_x += (target_camera_x - camera_x) * camera_smoothing
+            camera_x = max(0, min(camera_x, WORLD_SIZE - SCREEN_WIDTH))
 
-        # Le père est dessiné soit au début (DIALOGUE), soit à la fin (cinematique_finale)
-        if etat_jeu == "DIALOGUE" or cinematique_finale:
-            papa.draw(screen, camera_x)
-
-        baril.draw(screen, camera_x)
-        mouette.draw(screen, camera_x)
-        petit_marcassin.draw(screen, camera_x)
-        if petit_marcassin.etat in ["FOLLOW", "RETURN_TO_MOTHER"]:
-            maman_sanglier.draw(screen, camera_x, petit_marcassin.etat)
-        generateur_boue.draw(screen, camera_x)
-        player.draw(screen, camera_x, eau_debut, eau_fin, boue_debut, boue_fin)
-        castor.draw(screen, camera_x)
+            # --- RENDU DU JEU ---
+            bg.draw(screen, camera_x)
+            usine_depart.draw(screen, camera_x)
+            usine_fin.draw(screen, camera_x)
+            if etat_jeu == "DIALOGUE" or cinematique_finale:
+                papa.draw(screen, camera_x, player.rect.x)
+            baril.draw(screen, camera_x)
+            mouette.draw(screen, camera_x)
+            petit_marcassin.draw(screen, camera_x)
+            if petit_marcassin.etat in ["FOLLOW", "RETURN_TO_MOTHER"]:
+                maman_sanglier.draw(screen, camera_x, petit_marcassin.etat)
+            generateur_boue.draw(screen, camera_x)
+            player.draw(screen, camera_x, eau_debut, eau_fin, boue_debut, boue_fin)
+            castor.draw(screen, camera_x)
 
         pygame.display.flip()
         clock.tick(60)
