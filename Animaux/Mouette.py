@@ -118,7 +118,7 @@ class Mouette:
 
         elif self.etat == "S_ENVOLE":
             # Regarde vers la droite pendant qu'elle s'enfuit
-            self.animer("FUITE", force_direction=1)
+            self.animer("CONTENT", force_direction=1)
             self.rect.y -= 8
             self.rect.x += 4
             if self.rect.bottom < -100: self.etat = "DISPARUE"

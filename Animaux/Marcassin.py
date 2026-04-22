@@ -1,6 +1,7 @@
 import pygame
 import random
 import os
+from collections import deque
 
 
 class Marcassin:
@@ -38,9 +39,12 @@ class Marcassin:
         self.cote_suivi = 1
         self.flip = False
         self.afficher_bulle = False
-        self.moving = False  # Nouveau : pour savoir si on anime ou pas
+        self.moving = False
         self.font = pygame.font.SysFont("Arial", 22, bold=True)
         self.loin = False
+
+        # --- SYSTÈME DE RETARD (60 FRAMES) ---
+        self.historique_joueur = deque(maxlen=60)
 
     def charger_images(self, nom1, nom2):
         img1 = pygame.image.load(os.path.join(self.chemin, nom1)).convert_alpha()
@@ -48,9 +52,12 @@ class Marcassin:
         return [pygame.transform.scale(img1, (65, 45)), pygame.transform.scale(img2, (65, 45))]
 
     def update(self, joueur_x, joueur_en_mouvement, touche_caresse, keys, mere_rect):
+        # On enregistre la position actuelle du joueur
+        self.historique_joueur.append(joueur_x)
+
         dist_joueur = abs(self.rect.centerx - joueur_x)
         self.afficher_bulle = False
-        self.moving = False  # Par défaut, immobile
+        self.moving = False
 
         if self.timer_hesitation > 0:
             self.timer_hesitation -= 1
@@ -64,12 +71,9 @@ class Marcassin:
             if abs(self.rect.centerx - mere_rect.centerx) < 450:
                 self.etat = "RETURN_TO_MOTHER"
         else:
-            # Détection du danger
             if dist_joueur < self.zone_detection and joueur_en_mouvement:
                 self.etat = "FLEE"
-                self.timer_hesitation = 80  # Temps d'hésitation (un peu plus d'une seconde)
-
-            # Retour au calme uniquement si le timer est fini
+                self.timer_hesitation = 80
             elif self.timer_hesitation <= 0:
                 if dist_joueur <= self.zone_caresse and not joueur_en_mouvement:
                     self.afficher_bulle = True
@@ -91,7 +95,6 @@ class Marcassin:
                 self.flip = (self.direction_wander < 0)
                 self.moving = True
 
-            # Limites
             if self.rect.x < self.start_x - 200: self.direction_wander = 1
             if self.rect.x > self.start_x + 200: self.direction_wander = -1
 
@@ -108,18 +111,56 @@ class Marcassin:
                 self.moving = True
             self.flip = (direction < 0)
 
+
         elif self.etat == "FOLLOW":
+
             if keys[pygame.K_RIGHT]:
                 self.cote_suivi = -1
+
             elif keys[pygame.K_LEFT]:
                 self.cote_suivi = 1
 
-            cible_x = joueur_x + (self.cote_suivi * 85)
-            if abs(self.rect.centerx - cible_x) > 15:
+            # --- CALCUL DE LA VITESSE DU JOUEUR ---
+
+            # On calcule de combien le joueur a bougé par rapport à la frame précédente
+
+            vitesse_actuelle_joueur = 0
+
+            if len(self.historique_joueur) > 0:
+                vitesse_actuelle_joueur = abs(joueur_x - self.historique_joueur[-1])
+
+            # On stocke cette vitesse dans une DEUXIÈME deque (ou on stocke des tuples)
+
+            # Pour faire simple, on va juste utiliser l'historique des positions
+
+            # et calculer l'écart entre la frame 0 et la frame 1 de l'historique.
+
+            pos_cible_x = self.historique_joueur[0] if len(self.historique_joueur) == 60 else joueur_x
+
+            cible_x = pos_cible_x + (self.cote_suivi * 85)
+
+            if abs(self.rect.centerx - cible_x) > 10:
+
                 direction = 1 if self.rect.centerx < cible_x else -1
-                self.rect.x += direction * self.vitesse_fuite
+
+                # --- VITESSE IL Y A 60 FRAMES ---
+
+                # On calcule la vitesse que le joueur avait au tout début de notre historique
+
+                vitesse_il_y_a_60_frames = 0
+
+                if len(self.historique_joueur) >= 2:
+                    vitesse_il_y_a_60_frames = abs(self.historique_joueur[1] - self.historique_joueur[0])
+
+                # On applique cette vitesse (en s'assurant qu'elle est au moins de 1 pour pas qu'il reste bloqué)
+
+                vitesse_finale = max(vitesse_il_y_a_60_frames, 1) if joueur_en_mouvement else vitesse_il_y_a_60_frames
+
+                self.rect.x += direction * vitesse_finale
+
                 self.flip = (direction < 0)
-                self.moving = True
+
+                self.moving = (vitesse_finale > 0.1)
 
         elif self.etat == "RETURN_TO_MOTHER":
             direction = 1 if self.rect.centerx < mere_rect.centerx else -1
@@ -135,7 +176,7 @@ class Marcassin:
             self.index_anim += self.vitesse_anim
             if self.index_anim >= 2: self.index_anim = 0
         else:
-            self.index_anim = 0  # Image 1 fixe quand immobile
+            self.index_anim = 0
 
         paire = self.images.get(self.etat, self.images["WANDER"])
         self.image_actuelle = paire[int(self.index_anim)]

@@ -8,8 +8,6 @@ class Element:
         self.height = random.randint(h_range[0], h_range[1])
         self.x = x
         self.y = horizon_y - self.height
-
-        # Pré-rendu de l'élément pour la performance
         self.surface = pygame.Surface((self.width, self.height))
         self.surface.fill(color)
         if has_border:
@@ -21,10 +19,14 @@ class Background:
     def __init__(self, screen_width, screen_height, world_dist):
         self.sw = screen_width
         self.sh = screen_height
+        self.world_dist = world_dist
         self.ground_top = int(screen_height * (2 / 3))
         self.horizon_far = self.ground_top - 80
 
-        # Génération des calques
+        # Couleurs du ciel : Matin (Bleu clair) -> Soir (Bleu nuit/Grisâtre)
+        self.color_start = (140, 190, 230)
+        self.color_end = (30, 40, 70)
+
         self.layers = [
             {
                 "elements": self._generate_layer(world_dist, self.horizon_far, 350, (200, 300), (-100, -50),
@@ -57,18 +59,27 @@ class Background:
             x += w + random.randint(gap[0], gap[1])
         return elems
 
+    def _get_sky_color(self, camera_x):
+        # Calcul du ratio de progression (0.0 au début, 1.0 à la fin)
+        ratio = min(1.0, camera_x / (self.world_dist - self.sw))
+
+        # Interpolation Linéaire (Lerp) entre les deux couleurs
+        r = self.color_start[0] + (self.color_end[0] - self.color_start[0]) * ratio
+        g = self.color_start[1] + (self.color_end[1] - self.color_start[1]) * ratio
+        b = self.color_start[2] + (self.color_end[2] - self.color_start[2]) * ratio
+        return (int(r), int(g), int(b))
+
     def draw(self, screen, camera_x):
-        screen.fill((140, 190, 230))  # Ciel
+        # Remplissage du ciel avec la couleur calculée
+        screen.fill(self._get_sky_color(camera_x))
 
         for layer in self.layers:
-            # Dessin des éléments de la couche
             for e in layer["elements"]:
                 dx = e.x - (camera_x * layer["speed"])
                 if -e.width < dx < self.sw:
                     screen.blit(e.surface, (dx, e.y))
 
-            # Dessin du sol associé (si défini)
             if layer["floor_color"]:
                 pygame.draw.rect(screen, layer["floor_color"], (0, layer["floor_y"], self.sw, layer["floor_h"]))
-                if layer["speed"] == 1.0:  # Ligne d'horizon du premier plan
+                if layer["speed"] == 1.0:
                     pygame.draw.line(screen, (30, 50, 30), (0, self.ground_top), (self.sw, self.ground_top), 3)
